@@ -1,0 +1,443 @@
+{
+  "info": {
+    "name": "Fuel Route Planner",
+    "description": "Requests for the Fuel Route Planner API. Start the server with `python manage.py runserver`, then send the requests in order.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Plan a route (New York to Los Angeles)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "The default plan: empty tank at the start, strictly cheapest fuel bill. Look at fuel_stops, total_fuel_cost and meta.external_api_calls. On a freshly started server this makes exactly one outside call, to the routing service.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=New York, NY&finish=Los Angeles, CA",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "New York, NY"
+            },
+            {
+              "key": "finish",
+              "value": "Los Angeles, CA"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"has fuel stops and a total cost\", () => {",
+              "  pm.expect(body.fuel_stops.length).to.be.above(0);",
+              "  pm.expect(body.total_fuel_cost).to.be.above(0);",
+              "});",
+              "pm.test(\"made at most one outside call\", () => pm.expect(body.meta.external_api_calls).to.be.at.most(1));",
+              "pm.test(\"total gallons is distance / 10 mpg\", () => pm.expect(Math.abs(body.total_gallons - body.distance_miles / 10)).to.be.below(0.1));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Same request again (served from the cache)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "Send request 1 first. The route is cached, so this one makes no outside call and returns in a few milliseconds.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=New York, NY&finish=Los Angeles, CA",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "New York, NY"
+            },
+            {
+              "key": "finish",
+              "value": "Los Angeles, CA"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"made no outside call\", () => pm.expect(body.meta.external_api_calls).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Fewer stops (stop_cost=5)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "stop_cost is what one stop is worth in dollars when choosing stops. It trades a few dollars of fuel for far fewer stops. Reported costs are still fuel money only.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=5",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "New York, NY"
+            },
+            {
+              "key": "finish",
+              "value": "Los Angeles, CA"
+            },
+            {
+              "key": "stop_cost",
+              "value": "5"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"stop_cost is echoed back\", () => pm.expect(body.options.stop_cost).to.eql(5));",
+              "pm.test(\"ten stops or fewer\", () => pm.expect(body.fuel_stops.length).to.be.at.most(10));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Start with a full tank (start_fuel_gallons=50)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "The tank is empty by default so the total covers every mile. This starts with 50 gallons, so 50 fewer gallons are bought.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=New York, NY&finish=Los Angeles, CA&start_fuel_gallons=50",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "New York, NY"
+            },
+            {
+              "key": "finish",
+              "value": "Los Angeles, CA"
+            },
+            {
+              "key": "start_fuel_gallons",
+              "value": "50"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"buys 50 gallons less than the trip burns\", () => pm.expect(Math.abs(body.distance_miles / 10 - body.total_gallons - 50)).to.be.below(0.1));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Street address as the start (uses the geocoder)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "\"City, ST\" is resolved from a bundled list with no outside call. Anything else, such as this street address, costs one geocoding call, so this request makes two outside calls the first time.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=350 5th Ave, New York, NY&finish=Philadelphia, PA",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "350 5th Ave, New York, NY"
+            },
+            {
+              "key": "finish",
+              "value": "Philadelphia, PA"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"made at most two outside calls\", () => pm.expect(body.meta.external_api_calls).to.be.at.most(2));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Map page (open this URL in a browser)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "The same plan drawn on a map. Postman shows the HTML; open the URL in a browser to see the map.",
+        "url": {
+          "raw": "{{base_url}}/api/route/map/?start=New York, NY&finish=Los Angeles, CA&stop_cost=5",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            "map",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "New York, NY"
+            },
+            {
+              "key": "finish",
+              "value": "Los Angeles, CA"
+            },
+            {
+              "key": "stop_cost",
+              "value": "5"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"returns an HTML page\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/html\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Error: finish is missing (400)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "Validation errors name the field.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=New York, NY",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "New York, NY"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+              "pm.test(\"names the missing field\", () => pm.expect(JSON.stringify(pm.response.json())).to.include(\"finish\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Error: place not found (400)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "A place that cannot be found in the USA.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=Zzzzqq, ZZ&finish=Denver, CO",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "Zzzzqq, ZZ"
+            },
+            {
+              "key": "finish",
+              "value": "Denver, CO"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Error: no drivable route (422)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "Honolulu cannot be reached from Denver by road.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=Honolulu, HI&finish=Denver, CO",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "Honolulu, HI"
+            },
+            {
+              "key": "finish",
+              "value": "Denver, CO"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 422\", () => pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Error: no fuel station near the start (422)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "description": "The price list has no stations in Alaska. The message says to pass start_fuel_gallons.",
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=Anchorage, AK&finish=Fairbanks, AK",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "Anchorage, AK"
+            },
+            {
+              "key": "finish",
+              "value": "Fairbanks, AK"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 422\", () => pm.response.to.have.status(422));",
+              "pm.test(\"says how to proceed\", () => pm.expect(pm.response.json().detail).to.include(\"start_fuel_gallons\"));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -20,6 +20,8 @@ Then open:
 - JSON: http://127.0.0.1:8000/api/route/?start=New%20York,%20NY&finish=Los%20Angeles,%20CA
 - Map: http://127.0.0.1:8000/api/route/map/?start=New%20York,%20NY&finish=Los%20Angeles,%20CA
 
+A Postman collection with these requests, the optional parameters and the error cases is in `postman/`.
+
 ## The API
 
 `GET /api/route/` returns the plan as JSON. `GET /api/route/map/` takes the same parameters and returns an HTML page that draws the route and stops with Leaflet on OpenStreetMap tiles. Every JSON response includes `map_url` for the same trip.
@@ -176,6 +178,7 @@ fuel/management/commands/       build_places, locate_stations, load_stations
 fuel/templates/fuel/map.html    Leaflet map page
 fuel/tests/                     tests
 data/                           fuel-prices.csv (supplied), us_places.csv, stations.csv
+postman/                        Postman collection for the API
 ```
 
 ## Limits and what would change at larger scale
