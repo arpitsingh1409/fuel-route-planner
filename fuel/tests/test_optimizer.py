@@ -78,6 +78,11 @@ class PlanFuelStopsTests(SimpleTestCase):
     def test_does_not_stop_at_a_station_that_is_no_cheaper(self):
         self.assertEqual(plan([0, 100], [3.0, 3.0], 300), [(0, 300)])
 
+    def test_two_stations_at_the_same_place_and_price_make_one_stop(self):
+        # Rounding noise must not make an equally priced purchase look like a saving.
+        stops = plan([0, 9, 9, 12], [3.349, 3.239, 3.239, 3.192], 100)
+        self.assertEqual(stops, [(0, 9), (1, 3), (3, 88)])
+
     def test_start_fuel_that_covers_the_trip_needs_no_stop(self):
         self.assertEqual(plan([50], [3.0], 200, start_miles=200), [])
 

@@ -14,6 +14,8 @@ import numpy as np
 
 from fuel.exceptions import NoFeasiblePlan
 
+_MIN_SAVING = 1e-9  # dollars
+
 
 def plan_fuel_stops(
     miles: Sequence[int],
@@ -46,7 +48,9 @@ def plan_fuel_stops(
         best = np.minimum.accumulate(net)
         came_from = np.maximum.accumulate(np.where(net == best, levels, 0))
         bought = best + levels * per_mile + stop_cost
-        buy = bought < cost
+        # Only a real saving counts: without the margin, floating-point noise makes an
+        # equally priced purchase look cheaper and adds pointless stops.
+        buy = bought < cost - _MIN_SAVING
         arrived_with.append(np.where(buy, came_from, levels))
         cost = np.where(buy, bought, cost)
 
