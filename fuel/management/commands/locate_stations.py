@@ -18,7 +18,7 @@ from django.core.management.base import BaseCommand
 
 from fuel.locating import (
     address_highways, choose_exit, clean_stations, exit_candidates, highways_by_node, index_exits,
-    first_place, is_ambiguous, parse_exit, squash_place,
+    first_place, parse_exit, squash_place,
 )
 from fuel.services.geocoding import _places, lookup_place
 
@@ -61,24 +61,20 @@ class Command(BaseCommand):
                 counts["exit number in address but no matching exit"] += 1
             matched.append((station, town, candidates))
 
-        # Same exit number twice near the town: ask OSM which highway each candidate is on.
-        ambiguous = [candidates for _, _, candidates in matched if candidates and is_ambiguous(candidates)]
-        node_ids = {node_id for candidates in ambiguous for _, node_id, _ in candidates}
+        # Exit numbers repeat across highways, so ask OSM which highway each candidate is on.
+        node_ids = {node_id for _, _, candidates in matched for _, node_id, _ in candidates}
         node_highways = self.highways(raw / "osm" / "exit_ways.json", node_ids)
 
         located = []
         for station, town, candidates in matched:
-            point, located_by = (candidates[0][2], "exit") if candidates else (town, "town")
-            if candidates and is_ambiguous(candidates):
-                counts["ambiguous exit matches (another candidate over 2 miles away)"] += 1
-                highways = address_highways(station["address"])
-                point, confirmed = choose_exit(candidates, highways, node_highways)
-                if not confirmed:
-                    counts["ambiguous: highway not confirmed, took the nearest"] += 1
-                elif point != candidates[0][2]:
-                    counts["ambiguous: highway confirmed, moved off the nearest"] += 1
+            point, located_by = town, "town"
+            if candidates:
+                found, outcome = choose_exit(candidates, address_highways(station["address"]), node_highways)
+                if found:
+                    point, located_by = found, "exit"
+                    counts[f"located by exit, highway {outcome}"] += 1
                 else:
-                    counts["ambiguous: highway confirmed the nearest"] += 1
+                    counts[f"exit rejected, town used: {outcome}"] += 1
             counts[f"located by {located_by}"] += 1
             located.append(
                 {**station, "lat": round(point[0], 6), "lon": round(point[1], 6), "located_by": located_by}
@@ -106,16 +102,18 @@ class Command(BaseCommand):
         return elements
 
     def highways(self, cache_path, node_ids):
-        """Highway refs per exit node, from one Overpass query for the nodes not yet cached."""
+        """Highway refs per exit node, querying Overpass only for the nodes not yet cached."""
         cache = json.loads(cache_path.read_text()) if cache_path.exists() else {"node_ids": [], "elements": []}
         missing = sorted(node_ids - set(cache["node_ids"]))
-        if missing:
-            response = self.post_with_retry({"data": WAYS_QUERY.format(ids=",".join(map(str, missing)))})
+        for start in range(0, len(missing), 1000):  # batches keep each query small
+            batch = missing[start:start + 1000]
+            response = self.post_with_retry({"data": WAYS_QUERY.format(ids=",".join(map(str, batch)))})
             cache = {
-                "node_ids": sorted(set(cache["node_ids"]) | set(missing)),
+                "node_ids": sorted(set(cache["node_ids"]) | set(batch)),
                 "elements": cache["elements"] + json.loads(response)["elements"],
             }
-            cache_path.write_text(json.dumps(cache))
+            cache_path.write_text(json.dumps(cache))  # after every batch, so a stopped run resumes
+            time.sleep(5)
         return highways_by_node(cache["elements"], node_ids)
 
     def post_with_retry(self, data):

@@ -90,11 +90,6 @@ def pick_exit(
     return candidates[0][2] if candidates else None
 
 
-def is_ambiguous(candidates: list[Candidate]) -> bool:
-    """Another exit with the same number lies over 2 miles from the nearest one."""
-    return any(haversine_miles(*candidates[0][2], *other[2]) > 2 for other in candidates[1:])
-
-
 def address_highways(address: str) -> set[str]:
     """'I-80/I-94, EXIT 5' -> {'I80', 'I94'}: the highways named before the exit."""
     before_exit = re.split(r"EXIT", address.upper())[0]
@@ -112,11 +107,27 @@ def highways_by_node(ways: Iterable[dict], node_ids: set[int]) -> dict[int, set[
 
 
 def choose_exit(
-    candidates: list[Candidate], highways: set[str], node_highways: dict[int, set[str]]
-) -> tuple[Point, bool]:
-    """The nearest candidate on a named highway, else the nearest. The flag says the highway matched."""
-    on_highway = [c for c in candidates if node_highways.get(c[1], set()) & highways]
-    return (on_highway or candidates)[0][2], bool(on_highway)
+    candidates: list[Candidate], highways: set[str], node_highways: dict[int, set[str]],
+    unknown_max_miles: float = 10,
+) -> tuple[Point | None, str]:
+    """Pick the exit on the highway the address names, or say why none fits.
+
+    A candidate is confirmed when its ways share a highway with the address, contradicted
+    when both sides name highways and none match, and unknown otherwise. Takes the nearest
+    confirmed one, else the nearest unknown one close to the town; never a contradicted one.
+    Returns (point, "confirmed" | "unconfirmed") or (None, "contradicted" | "too far").
+    """
+    unknown = []
+    for miles, node_id, point in candidates:  # nearest first
+        refs = node_highways.get(node_id, set())
+        if refs & highways:
+            return point, "confirmed"
+        if not (highways and refs):
+            unknown.append((miles, point))
+    near = [point for miles, point in unknown if miles <= unknown_max_miles]
+    if near:
+        return near[0], "unconfirmed"
+    return None, "too far" if unknown else "contradicted"
 
 
 def squash_place(name: str) -> str:

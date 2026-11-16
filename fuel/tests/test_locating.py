@@ -5,7 +5,7 @@ from django.test import SimpleTestCase
 
 from fuel.locating import (
     address_highways, choose_exit, clean_stations, exit_candidates, highways_by_node, index_exits,
-    first_place, is_ambiguous, parse_exit, pick_exit, squash_place,
+    first_place, parse_exit, pick_exit, squash_place,
 )
 from fuel.management.commands.locate_stations import Command
 
@@ -71,13 +71,6 @@ class HighwayCheckTests(SimpleTestCase):
     def test_exit_candidates_carry_node_ids_nearest_first(self):
         self.assertEqual([c[1] for c in exit_candidates("283", self.town, self.exits)], [1, 2])
 
-    def test_is_ambiguous_when_another_candidate_is_over_2_miles_away(self):
-        candidates = exit_candidates("283", self.town, self.exits)
-        self.assertTrue(is_ambiguous(candidates))
-        self.assertFalse(is_ambiguous(candidates[:1]))
-        close = exit_candidates("283", self.town, {"283": [(1, (36.55, -95.20)), (3, (36.551, -95.201))]})
-        self.assertFalse(is_ambiguous(close))
-
     def test_address_highways_reads_interstates_and_us_routes_before_the_exit(self):
         cases = {
             "I-44, EXIT 283 & US-69": {"I44"}, "I-80/I-94, EXIT 5": {"I80", "I94"},
@@ -97,14 +90,28 @@ class HighwayCheckTests(SimpleTestCase):
             highways_by_node(ways, {1, 2}), {1: {"I44", "US412", "US69"}, 2: {"I44", "US412"}}
         )
 
-    def test_choose_exit_prefers_the_named_highway(self):
-        candidates = exit_candidates("283", self.town, self.exits)
-        self.assertEqual(choose_exit(candidates, {"I44"}, {2: {"I44"}, 1: {"US69"}}), ((36.60, -95.33), True))
+    # Candidates are (miles from town, node id, point); points are only labels here.
+    near, far = (3.0, 1, "near"), (8.0, 2, "far")
 
-    def test_choose_exit_falls_back_to_the_nearest_when_the_highway_is_unconfirmed(self):
-        candidates = exit_candidates("283", self.town, self.exits)
-        self.assertEqual(choose_exit(candidates, {"I44"}, {1: {"US69"}}), ((36.55, -95.20), False))
-        self.assertEqual(choose_exit(candidates, set(), {2: {"I44"}}), ((36.55, -95.20), False))
+    def test_choose_exit_takes_the_nearest_confirmed(self):
+        self.assertEqual(choose_exit([self.near, self.far], {"I44"}, {1: {"I44"}, 2: {"I44"}}), ("near", "confirmed"))
+
+    def test_choose_exit_prefers_a_farther_confirmed_over_a_nearer_contradicted(self):
+        self.assertEqual(choose_exit([self.near, self.far], {"I44"}, {1: {"US69"}, 2: {"I44"}}), ("far", "confirmed"))
+
+    def test_choose_exit_never_takes_a_contradicted_candidate(self):
+        self.assertEqual(choose_exit([self.near], {"I44"}, {1: {"US69"}}), (None, "contradicted"))
+
+    def test_choose_exit_takes_an_unknown_candidate_within_10_miles(self):
+        self.assertEqual(choose_exit([self.near], set(), {1: {"I44"}}), ("near", "unconfirmed"))
+        self.assertEqual(choose_exit([self.near], {"I44"}, {}), ("near", "unconfirmed"))
+
+    def test_choose_exit_skips_an_unknown_candidate_beyond_10_miles(self):
+        self.assertEqual(choose_exit([(12.0, 3, "x")], {"I44"}, {}), (None, "too far"))
+
+    def test_choose_exit_rejects_the_only_exit_when_it_is_on_another_highway(self):
+        # Framingham MA, "I-90, EXIT 12" (pre-2021 number): the only junction 12 nearby is in Boston.
+        self.assertEqual(choose_exit([(20.0, 4, "boston")], {"I90"}, {4: {"I93"}}), (None, "contradicted"))
 
 
 class TownTests(SimpleTestCase):
