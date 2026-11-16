@@ -48,7 +48,7 @@ def normalize_place(name: str) -> str:
 
 
 def state_code(state: str) -> str | None:
-    state = state.strip()
+    state = state.replace(".", "").strip()
     if state.upper() in STATE_CODES:
         return state.upper()
     return STATES.get(" ".join(state.lower().split()))
@@ -90,7 +90,8 @@ def resolve(query: str) -> tuple[Location, int]:
     results, calls = external.cached(
         key, lambda: external.get_json(f"{settings.NOMINATIM_URL}/search", params)
     )
-    if not results:
+    # A 4xx error object comes back as a dict, which also means not found.
+    if not isinstance(results, list) or not results:
         raise LocationNotFound(f'Could not find "{text}" in the USA. Try the form "City, ST".')
     top = results[0]
     return Location(top["display_name"], float(top["lat"]), float(top["lon"])), calls

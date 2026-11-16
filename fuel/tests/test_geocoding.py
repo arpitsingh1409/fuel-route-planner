@@ -38,6 +38,17 @@ class ResolveTests(SimpleTestCase):
         self.assertEqual(resolve(query)[1], 0)
         self.assertEqual(get_json.call_count, 1)
 
+    @patch("fuel.services.external.get_json")
+    def test_dotted_state_code_is_found_locally(self, get_json):
+        location, calls = resolve("Washington, D.C.")
+        self.assertEqual((calls, location.name), (0, "Washington, DC"))
+        get_json.assert_not_called()
+
+    @patch("fuel.services.external.get_json", return_value={"error": "Unable to geocode"})
+    def test_geocoder_error_object_is_a_400(self, _):
+        with self.assertRaises(LocationNotFound):
+            resolve("zzzz nowhere")
+
     @patch("fuel.services.external.get_json", return_value=[])
     def test_unfindable_place_is_a_400(self, _):
         with self.assertRaises(LocationNotFound) as raised:
