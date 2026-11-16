@@ -94,11 +94,11 @@ With `stop_cost=0` (the default) the result is the strictly cheapest fuel bill, 
 
 | `stop_cost` | Stops | Fuel cost |
 |---|---|---|
-| $0 | 20 (6 of them under 2 gallons) | $859.45 |
-| $1 | 10 | $860.87 |
-| $2 | 9 | $862.20 |
-| $5 | 8 | $865.11 |
-| $10 | 7 | $870.37 |
+| $0 | 21 (7 of them under 2 gallons) | $859.54 |
+| $1 | 10 | $861.66 |
+| $2 | 9 | $862.99 |
+| $5 | 8 | $865.90 |
+| $10 | 7 | $874.78 |
 
 Chicago to Houston: 12 stops for $318.22 at $0; 4 stops for $321.21 at $5. Seattle to Miami (3,303 miles): 24 stops for $1,027.49 at $0; 9 stops for $1,034.61 at $5.
 
@@ -118,11 +118,11 @@ Chicago to Houston: 12 stops for $318.22 at $0; 4 stops for $321.21 at $5. Seatt
 
 The price list has no coordinates, and only a handful of addresses are street addresses; most are highway descriptions such as `I-44, EXIT 283 & US-69`.
 
-- If the address names an exit, the station is placed at the OpenStreetMap motorway junction with that exit number within 25 miles of the station's town (an exact match such as `144B` first, then the bare number). When exits with the same number lie more than 2 miles apart, the one on the Interstate or US route named in the address is preferred, read from the OpenStreetMap ways through each exit; if that cannot be confirmed, the one nearest the town is used.
+- If the address names an exit, the station is placed at the OpenStreetMap motorway junction with that exit number within 20 miles of the station's town (an exact match such as `144B` first, then the bare number). The match must be on the Interstate or US route the address names, read from the OpenStreetMap ways through the junction: a junction on a different highway is rejected, and one whose highway cannot be checked is accepted only within 10 miles of the town. This matters because exit numbers are reused across highways and some states have renumbered theirs.
 - Otherwise it is placed at its town centre, from the US Census Gazetteer, with Nominatim for towns it lacks.
 - Each station records the method in `located_by`: `exit` is precise, `town` is approximate. In a check on Oklahoma, a third of exit-located stations were more than 5 miles from their town centre, which is why exits are used where possible.
 
-Of the 6,620 stations, 3,483 are located by exit and 3,137 by town centre. Exit numbers were ambiguous for 397 stations: the highway check confirmed the nearest exit for 315, moved 38 to an exit on the named highway, and could not decide 44, which keep the nearest. Six stations are left out because their town could not be found.
+Of the 6,620 stations, 3,372 are located by exit and 3,248 by town centre. The highway was confirmed for 3,305 of the exit-located stations; the other 67 could not be checked and sit within 10 miles of their town. Another 90 exit matches were rejected (84 on a different highway, 6 uncheckable and too far away) and 255 exit numbers had no match, so those stations use their town centre. Six stations are left out because their town could not be found.
 
 This work runs once and its output, `data/us_places.csv` and `data/stations.csv`, is committed, so a reviewer only needs `migrate` and `load_stations`. To rebuild it:
 
@@ -148,14 +148,14 @@ Finding stations near the route is one NumPy matrix product over the stations, h
 python manage.py test
 ```
 
-61 tests, run against mocked outside services. The notable ones:
+65 tests, run against mocked outside services. The notable ones:
 
 - **Optimizer against the textbook rule**: 300 random trips with free stops, checked against the greedy rule's cost, including which trips are infeasible.
 - **Optimizer against brute force**: 300 small random trips with a stop cost, checked against trying every whole-mile purchase at every station.
 - **Plan validity**: every plan is replayed to check the tank never runs dry or overflows.
 - **Station search**: a station 4.7 miles off a sparse 530-mile route is found and one 5.9 miles off is not.
 - **API**: a repeated request makes no outside call; a routing outage is a 503 and is not cached; bad input is a 400; the map page shows errors with the right status.
-- **Data preparation**: Canadian rows are dropped, duplicates keep the lowest price, exit numbers are parsed and matched, and an ambiguous exit goes to the highway named in the address.
+- **Data preparation**: Canadian rows are dropped, duplicates keep the lowest price, exit numbers are parsed and matched, and an exit on a different highway from the one in the address is rejected.
 
 ## Project layout
 
@@ -181,6 +181,7 @@ data/                           fuel-prices.csv (supplied), us_places.csv, stati
 ## Limits and what would change at larger scale
 
 - Town-located stations are approximate, which the 5-mile margin only partly absorbs.
+- An exit renumbered on the same highway can still match the wrong junction (Massachusetts renumbered in 2021 and the price list mixes old and new numbers). The 20-mile limit bounds the error but cannot remove it.
 - The public OSRM server has no uptime guarantee; production would self-host OSRM via `OSRM_URL`.
 - The cache is per process; several workers would share Redis or Memcached through `CACHES`.
 - Fuel can only be bought at stations in the supplied list.
