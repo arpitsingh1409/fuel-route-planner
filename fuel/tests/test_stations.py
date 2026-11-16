@@ -1,4 +1,5 @@
 import tempfile
+from io import StringIO
 from pathlib import Path
 
 import numpy as np
@@ -92,8 +93,8 @@ class LoadStationsTests(TestCase):
         with tempfile.TemporaryDirectory() as folder:
             Path(folder, "stations.csv").write_text(self.CSV)
             with self.settings(DATA_DIR=Path(folder)):
-                call_command("load_stations", verbosity=0)
-                call_command("load_stations", verbosity=0)  # running it twice changes nothing
+                call_command("load_stations", stdout=StringIO())
+                call_command("load_stations", stdout=StringIO())  # twice changes nothing
 
         self.assertEqual(list(FuelStation.objects.values_list("opis_id", flat=True)), [7, 35])
         woodshed = FuelStation.objects.get(pk=7)
