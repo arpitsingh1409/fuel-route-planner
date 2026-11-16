@@ -1,7 +1,8 @@
 from urllib.parse import urlencode
 
-from django.http import HttpResponse
+from django.shortcuts import render
 from django.urls import reverse
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,5 +21,19 @@ class RouteView(APIView):
 
 
 def route_map(request):
-    # Placeholder until the map page is built.
-    return HttpResponse(status=501)
+    context = {"json_url": f"{reverse('route')}?{request.GET.urlencode()}"}
+    try:
+        query = RouteQuerySerializer(data=request.GET)
+        query.is_valid(raise_exception=True)
+        context["plan"] = plan_trip(**query.validated_data)
+    except APIException as exc:
+        context.update(error=_message(exc.detail), status_code=exc.status_code)
+        return render(request, "fuel/map.html", context, status=exc.status_code)
+    return render(request, "fuel/map.html", context)
+
+
+def _message(detail) -> str:
+    """One readable line from a DRF error detail, which may be a string or a field-to-messages dict."""
+    if isinstance(detail, dict):
+        return " ".join(f"{field}: {' '.join(map(str, messages))}" for field, messages in detail.items())
+    return str(detail)

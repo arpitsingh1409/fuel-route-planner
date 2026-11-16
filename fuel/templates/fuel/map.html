@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if plan %}Fuel plan: {{ plan.start.name }} → {{ plan.finish.name }}{% else %}Fuel plan unavailable{% endif %}</title>
+{% if plan %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+{% endif %}
+<style>
+  :root {
+    --accent: #0f766e;
+    --accent-soft: #e6f2f1;
+    --ink: #1f2933;
+    --muted: #5b6672;
+    --line: #dde2e7;
+    --bg: #f7f8fa;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    line-height: 1.4;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; grid-template-columns: 360px 1fr; background: var(--bg); }
+  .num { font-variant-numeric: tabular-nums; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  #panel { display: flex; flex-direction: column; min-height: 0; height: 100vh; background: #fff; border-right: 1px solid var(--line); }
+  #map { height: 100vh; }
+  header { padding: 20px 20px 16px; border-bottom: 1px solid var(--line); }
+  .eyebrow { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  h1 { margin: 0; font-size: 18px; font-weight: 600; }
+
+  .figures { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 16px 0 0; }
+  .figures div { margin: 0; }
+  .figures dt { font-size: 12px; color: var(--muted); }
+  .figures dd { margin: 2px 0 0; font-size: 17px; font-weight: 600; }
+  .figures .total { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid var(--line); }
+  .figures .total dd { font-size: 26px; color: var(--accent); }
+
+  #stops { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 8px 0; list-style: none; }
+  #stops button {
+    display: grid; grid-template-columns: 28px 1fr auto; gap: 2px 12px; width: 100%;
+    padding: 10px 20px; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  }
+  #stops button:hover, #stops button.active { background: var(--accent-soft); }
+  #stops button:focus-visible { outline-offset: -3px; }
+  .badge {
+    grid-row: span 3; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+  }
+  .stop-name { font-weight: 600; }
+  .stop-cost { font-weight: 600; text-align: right; }
+  .stop-detail { grid-column: 2 / -1; font-size: 13px; color: var(--muted); }
+  .empty { margin: 0; padding: 20px; color: var(--muted); }
+
+  footer { padding: 12px 20px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  footer p { margin: 4px 0; }
+
+  .marker {
+    display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+    font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  .marker.end { background: var(--ink); border-radius: 6px; font-size: 11px; }
+  .popup strong { display: block; margin-bottom: 2px; }
+  .popup p { margin: 2px 0; }
+
+  .error { grid-column: 1 / -1; align-self: center; justify-self: center; max-width: 520px; margin: 24px; padding: 28px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+  .error h1 { margin-bottom: 8px; }
+  .error p { margin: 8px 0 0; }
+
+  @media (max-width: 720px) {
+    body { grid-template-columns: 1fr; }
+    #map { order: -1; height: 60vh; }
+    #panel { height: auto; border-right: 0; }
+    #stops { overflow: visible; }
+  }
+</style>
+</head>
+<body>
+{% if plan %}
+<aside id="panel" aria-label="Fuel plan">
+  <header>
+    <p class="eyebrow">Fuel plan</p>
+    <h1 id="trip"></h1>
+    <dl class="figures num">
+      <div><dt>Distance</dt><dd id="distance"></dd></div>
+      <div><dt>Drive time</dt><dd id="duration"></dd></div>
+      <div><dt>Fuel stops</dt><dd id="stop-count"></dd></div>
+      <div><dt>Gallons bought</dt><dd id="gallons"></dd></div>
+      <div class="total"><dt>Total fuel cost</dt><dd id="total"></dd></div>
+    </dl>
+  </header>
+  <ol id="stops" class="num"></ol>
+  <footer>
+    <p id="assumptions" class="num"></p>
+    <p><a href="{{ json_url }}">View this plan as JSON</a></p>
+    <p>Station locations derived from OpenStreetMap data.</p>
+  </footer>
+</aside>
+<main id="map" aria-label="Route map"></main>
+{{ plan|json_script:"plan" }}
+<script>
+  const plan = JSON.parse(document.getElementById("plan").textContent);
+  const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+  const price = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 3 });
+  const one = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+  function setText(id, text) { document.getElementById(id).textContent = text; }
+  function hours(value) {
+    const minutes = Math.round(value * 60);
+    return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+  }
+
+  setText("trip", `${plan.start.name} → ${plan.finish.name}`);
+  setText("distance", `${one.format(plan.distance_miles)} mi`);
+  setText("duration", hours(plan.duration_hours));
+  setText("stop-count", plan.fuel_stops.length);
+  setText("gallons", `${one.format(plan.total_gallons)} gal`);
+  setText("total", money.format(plan.total_fuel_cost));
+  setText("assumptions",
+    `Assumes a ${plan.vehicle.range_miles}-mile range at ${plan.vehicle.mpg} mpg, ` +
+    `${one.format(plan.options.start_fuel_gallons)} gal in the tank at the start, ` +
+    `and ${money.format(plan.options.stop_cost)} per stop.`);
+
+  const map = L.map("map", { zoomControl: true });
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+
+  const line = L.polyline(plan.route.coordinates.map(([lon, lat]) => [lat, lon]), {
+    color: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(), weight: 5, opacity: 0.85,
+  }).addTo(map);
+  map.fitBounds(line.getBounds(), { padding: [32, 32], maxZoom: 12 });
+
+  function icon(label, className) {
+    return L.divIcon({ html: el("span", className, label), className: "", iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14] });
+  }
+  function popup(title, lines) {
+    const box = el("div", "popup");
+    box.append(el("strong", "", title), ...lines.map((text) => el("p", "num", text)));
+    return box;
+  }
+
+  L.marker([plan.start.lat, plan.start.lon], { icon: icon("A", "marker end"), title: "Start", zIndexOffset: 1000 })
+    .bindPopup(popup("Start", [plan.start.name])).addTo(map);
+  L.marker([plan.finish.lat, plan.finish.lon], { icon: icon("B", "marker end"), title: "Finish", zIndexOffset: 1000 })
+    .bindPopup(popup("Finish", [plan.finish.name])).addTo(map);
+
+  const list = document.getElementById("stops");
+  if (plan.fuel_stops.length === 0) {
+    list.replaceWith(el("p", "empty", "No fuel stops needed: the fuel already in the tank covers this trip."));
+  }
+  for (const stop of plan.fuel_stops) {
+    const place = `${stop.city}, ${stop.state}`;
+    const marker = L.marker([stop.lat, stop.lon], { icon: icon(String(stop.stop), "marker"), title: stop.name })
+      .bindPopup(popup(`${stop.stop}. ${stop.name}`, [
+        stop.address, place,
+        `${price.format(stop.price_per_gallon)}/gal × ${one.format(stop.gallons)} gal = ${money.format(stop.cost)}`,
+      ])).addTo(map);
+
+    const button = el("button");
+    button.type = "button";
+    button.append(
+      el("span", "badge", stop.stop),
+      el("span", "stop-name", stop.name),
+      el("span", "stop-cost", money.format(stop.cost)),
+      el("span", "stop-detail", `${place} · ${stop.address}`),
+      el("span", "stop-detail",
+        `Mile ${one.format(stop.mile_marker)} · ${price.format(stop.price_per_gallon)}/gal · ${one.format(stop.gallons)} gal`),
+    );
+    button.addEventListener("click", () => {
+      list.querySelectorAll("button.active").forEach((b) => b.classList.remove("active"));
+      button.classList.add("active");
+      map.setView(marker.getLatLng(), Math.max(map.getZoom(), 11));
+      marker.openPopup();
+    });
+    const item = el("li");
+    item.append(button);
+    list.append(item);
+  }
+</script>
+{% else %}
+<main class="error" role="alert">
+  <p class="eyebrow">Error {{ status_code }}</p>
+  <h1>Could not plan this trip</h1>
+  <p>{{ error }}</p>
+  <p><a href="{{ json_url }}">View the JSON response</a></p>
+</main>
+{% endif %}
+</body>
+</html>

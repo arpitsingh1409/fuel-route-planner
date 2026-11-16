@@ -100,3 +100,15 @@ class RouteApiTests(TestCase):
     def test_routing_outage_is_a_503(self):
         self.get_json.side_effect = UpstreamUnavailable()
         self.assertEqual(self.client.get(self.url, {"start": S, "finish": F}).status_code, 503)
+
+    def test_map_page_embeds_the_plan(self):
+        r = self.client.get(reverse("route-map"), {"start": S, "finish": F})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="plan"')
+        self.assertContains(r, "leaflet")
+
+    def test_map_page_shows_errors_with_the_right_status(self):
+        self.assertEqual(self.client.get(reverse("route-map"), {"start": S}).status_code, 400)
+        self.get_json.side_effect = UpstreamUnavailable()
+        r = self.client.get(reverse("route-map"), {"start": S, "finish": F})
+        self.assertContains(r, "unavailable", status_code=503)
