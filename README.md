@@ -71,7 +71,7 @@ Example: Chicago to Houston with `stop_cost=5`. Abridged: the route has 1,490 po
 | Status | Cause |
 |---|---|
 | 400 | A parameter is missing or out of range, or a location cannot be found in the USA. |
-| 422 | OSRM finds no drivable route, or part of the route has no station within 500 miles (also returned if no stations are loaded). |
+| 422 | OSRM finds no drivable route, or part of the route has no station within 500 miles (also returned if no stations are loaded), or no station is within 25 miles of the start and `start_fuel_gallons` cannot reach the first station on the route. |
 | 503 | The routing or geocoding service timed out, failed, returned a 5xx, or rate-limited the request (429). |
 
 The map page returns the same statuses with the message shown on the page.
@@ -81,7 +81,7 @@ The map page returns the same statuses with the message shown on the page.
 1. Validate the query parameters.
 2. Resolve `start` and `finish`. "City, ST" comes from the bundled places list (0 calls); anything else is one Nominatim call each.
 3. Fetch the fastest driving route from OSRM (1 call).
-4. Find the stations within 5 miles of the route and their mile along it, and add the station nearest the route's start at mile 0.
+4. Find the stations within 5 miles of the route and their mile along it, and add the station nearest the route's start at mile 0 if it is within 25 miles of the start.
 5. Choose the stops and amounts (below), then build the response.
 
 A typical request makes exactly 1 outside call; the worst case is 3. Outside results are cached for 24 hours, so a repeated request makes none.
@@ -104,7 +104,7 @@ Chicago to Houston: 12 stops for $318.22 at $0; 4 stops for $321.21 at $5. Seatt
 
 ## Assumptions and decisions
 
-- **The tank starts empty**, so the total covers fuel for every mile driven and can be sanity-checked as distance / 10 x price. To make that possible on any trip, the station nearest the start of the route is always available at mile 0. `start_fuel_gallons` overrides this.
+- **The tank starts empty**, so the total covers fuel for every mile driven and can be sanity-checked as distance / 10 x price. To make that possible, the station nearest the start of the route is available at mile 0, but only when it is within 25 miles of the start; for that stop `miles_off_route` is its distance from the start, not from the route line. With no station that close, the request fails with 422 unless `start_fuel_gallons` covers the distance to the first station on the route. `start_fuel_gallons` overrides the empty tank.
 - **The route is the fastest one OSRM returns and is not bent toward cheaper fuel.** Bending it would need a routing call per candidate detour, and at 10 mpg each detour mile costs about 35 cents each way.
 - **"On the route" means within 5 miles of the route line.** The margin mainly absorbs the uncertainty of town-located stations. Detour miles are not costed.
 - **Public OSRM for routing**, because it needs no API key, so the project runs with no signup. Set `OSRM_URL` to use a self-hosted OSRM (`NOMINATIM_URL` likewise).
@@ -148,7 +148,7 @@ Finding stations near the route is one NumPy matrix product over the stations, h
 python manage.py test
 ```
 
-54 tests, run against mocked outside services. The notable ones:
+61 tests, run against mocked outside services. The notable ones:
 
 - **Optimizer against the textbook rule**: 300 random trips with free stops, checked against the greedy rule's cost, including which trips are infeasible.
 - **Optimizer against brute force**: 300 small random trips with a stop cost, checked against trying every whole-mile purchase at every station.

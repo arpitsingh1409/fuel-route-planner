@@ -85,7 +85,39 @@ class RouteApiTests(TestCase):
     def test_same_start_and_finish(self):
         self.get_json.return_value = POINT
         body = self.client.get(self.url, {"start": S, "finish": S}).json()
-        self.assertEqual((body["fuel_stops"], body["total_fuel_cost"]), ([], 0))
+        self.assertEqual(body["fuel_stops"], [])
+        self.assertIsInstance(body["total_fuel_cost"], float)
+        self.assertEqual(body["total_fuel_cost"], 0.0)
+
+    def start_station_north(self, miles, price):
+        """Replace the mile-0 station with one this many miles north of the route's start."""
+        FuelStation.objects.filter(opis_id=1).delete()
+        FuelStation.objects.create(
+            opis_id=99, name="Off route", address="US-83", city="Town", state="NE", price=price,
+            lat=40.0 + miles / 69.05, lon=-100.0, located_by="town",
+        )
+
+    def test_far_start_station_with_empty_tank_is_a_422(self):
+        self.start_station_north(30, 2.00)
+        r = self.client.get(self.url, {"start": S, "finish": F})
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(
+            r.json()["detail"],
+            "No fuel station within 25 miles of the start, and the starting fuel cannot reach the first "
+            "station on the route. Pass start_fuel_gallons to start with fuel in the tank.",
+        )
+
+    def test_far_start_station_is_skipped_when_start_fuel_reaches_the_route(self):
+        self.start_station_north(30, 2.00)
+        r = self.client.get(self.url, {"start": S, "finish": F, "start_fuel_gallons": 10})
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(99, [s["station_id"] for s in r.json()["fuel_stops"]])
+
+    def test_near_start_station_is_the_first_stop_at_mile_0(self):
+        self.start_station_north(10, 3.50)
+        first = self.client.get(self.url, {"start": S, "finish": F}).json()["fuel_stops"][0]
+        self.assertEqual((first["station_id"], first["mile_marker"]), (99, 0.0))
+        self.assertAlmostEqual(first["miles_off_route"], 10.0, delta=0.2)
 
     def test_bad_input_is_a_400(self):
         for params in [

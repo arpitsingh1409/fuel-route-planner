@@ -7,6 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-not-for-production")
+# A development default; set DJANGO_DEBUG=0 to turn it off.
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
@@ -61,3 +62,5 @@ VEHICLE_RANGE_MILES = 500
 VEHICLE_MPG = 10
 # A station this close to the route line counts as being on the route.
 MAX_DETOUR_MILES = 5
+# With an empty tank the trip starts by fuelling at the nearest station, but only if one is this close to the start.
+START_STATION_MAX_MILES = 25

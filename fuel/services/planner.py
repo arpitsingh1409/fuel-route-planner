@@ -5,6 +5,7 @@ import time
 
 from django.conf import settings
 
+from fuel.exceptions import NoFeasiblePlan
 from fuel.services import geocoding, routing, stations
 from fuel.services.optimizer import plan_fuel_stops
 
@@ -19,12 +20,19 @@ def plan_trip(start: str, finish: str, start_fuel_gallons: float, stop_cost: flo
 
     candidates = _candidates(route)
     mpg = settings.VEHICLE_MPG
+    start_miles = round(start_fuel_gallons * mpg)
+    # A mile-0 start station is always reachable, so this only fires when there was none.
+    if round(candidates[0]["mile"] if candidates else route.distance_miles) > start_miles:
+        raise NoFeasiblePlan(
+            f"No fuel station within {settings.START_STATION_MAX_MILES} miles of the start, and the starting fuel "
+            "cannot reach the first station on the route. Pass start_fuel_gallons to start with fuel in the tank."
+        )
     plan = plan_fuel_stops(
         [round(station["mile"]) for station in candidates],
         [station["price"] for station in candidates],
         round(route.distance_miles),
         tank_miles=settings.VEHICLE_RANGE_MILES,
-        start_miles=round(start_fuel_gallons * mpg),
+        start_miles=start_miles,
         mpg=mpg,
         stop_cost=stop_cost,
     )
@@ -40,7 +48,7 @@ def plan_trip(start: str, finish: str, start_fuel_gallons: float, stop_cost: flo
         "options": {"start_fuel_gallons": float(start_fuel_gallons), "stop_cost": float(stop_cost)},
         "fuel_stops": fuel_stops,
         "total_gallons": round(sum(bought for _, bought in plan) / mpg, 1),
-        "total_fuel_cost": round(sum(stop["cost"] for stop in fuel_stops), 2),
+        "total_fuel_cost": round(sum((stop["cost"] for stop in fuel_stops), 0.0), 2),
         "route": {"type": "LineString", "coordinates": _thin(route.points)},
         "meta": {
             "external_api_calls": start_calls + finish_calls + route_calls,
@@ -50,9 +58,11 @@ def plan_trip(start: str, finish: str, start_fuel_gallons: float, stop_cost: flo
 
 
 def _candidates(route: routing.Route) -> list[dict]:
-    """Stations along the route, plus the one nearest its start so the trip can begin with a fill-up."""
+    """Stations along the route, plus the one nearest its start if close enough to begin with a fill-up."""
     first = stations.nearest(*route.points[0])
     found = stations.along_route(route.points, route.miles, settings.MAX_DETOUR_MILES)
+    if first["miles_off_route"] > settings.START_STATION_MAX_MILES:
+        return found
     return [first] + [station for station in found if station["opis_id"] != first["opis_id"]]
 
 
