@@ -1,3 +1,3 @@
-from django.urls import path
+from django.urls import include, path
 
-urlpatterns: list[path] = []
+urlpatterns = [path("api/", include("fuel.urls"))]
