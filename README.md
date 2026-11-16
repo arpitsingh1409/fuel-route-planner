@@ -184,6 +184,7 @@ postman/                        Postman collection for the API
 ## Limits and what would change at larger scale
 
 - Town-located stations are approximate, which the 5-mile margin only partly absorbs.
+- Placing town-located stations by name was tested and rejected. Matching them to same-brand OpenStreetMap fuel stations within 5 miles gave a unique match for only 20% of them, and, checked against exit-located stations, 13.5% of matches were more than 2 miles from the true spot. A wrong pin is worse than an honest town centre.
 - An exit renumbered on the same highway can still match the wrong junction (Massachusetts renumbered in 2021 and the price list mixes old and new numbers). The 20-mile limit bounds the error but cannot remove it.
 - The public OSRM server has no uptime guarantee; production would self-host OSRM via `OSRM_URL`.
 - The cache is per process; several workers would share Redis or Memcached through `CACHES`.
