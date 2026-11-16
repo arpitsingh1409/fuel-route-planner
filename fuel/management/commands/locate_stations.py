@@ -123,9 +123,11 @@ class Command(BaseCommand):
             for url in OVERPASS_URLS:
                 try:
                     response = requests.post(url, data=data, headers=HEADERS, timeout=400)
-                    if response.ok and '"elements"' in response.text:
+                    body = json.loads(response.text) if response.ok else {}
+                    # Overpass answers 200 with a "remark" when it ran out of time or memory mid-query.
+                    if "elements" in body and "remark" not in body:
                         return response.text
-                except requests.RequestException:
+                except (requests.RequestException, ValueError):
                     pass
                 self.stdout.write(f"Overpass busy, retrying ({attempt})")
                 time.sleep(15 * attempt)

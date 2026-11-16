@@ -1,9 +1,13 @@
+import io
+from unittest import mock
+
 from django.test import SimpleTestCase
 
 from fuel.locating import (
     address_highways, choose_exit, clean_stations, exit_candidates, highways_by_node, index_exits,
     first_place, is_ambiguous, parse_exit, pick_exit, squash_place,
 )
+from fuel.management.commands.locate_stations import Command
 
 
 def row(opis_id, state, price, city="Somewhere", name="STOP"):
@@ -116,3 +120,20 @@ class TownTests(SimpleTestCase):
         results = [result("39.9", "amenity", "PA"), result("41.1", "village", "IL"), result("40.6", "village", "PA")]
         self.assertEqual(first_place(results, "PA"), (40.6, -80.2))
         self.assertIsNone(first_place(results[:2], "PA"))
+
+
+class OverpassRetryTests(SimpleTestCase):
+    def post_with(self, *bodies):
+        responses = [mock.Mock(ok=True, text=body) for body in bodies]
+        with mock.patch("fuel.management.commands.locate_stations.requests.post", side_effect=responses), \
+                mock.patch("fuel.management.commands.locate_stations.time.sleep"):
+            return Command(stdout=io.StringIO()).post_with_retry({"data": "q"})
+
+    def test_retries_a_body_that_reports_a_runtime_error(self):
+        cut_short = '{"elements": [], "remark": "runtime error: Query timed out"}'
+        clean = '{"elements": [{"id": 1}]}'
+        self.assertEqual(self.post_with(cut_short, clean), clean)
+
+    def test_retries_a_body_that_is_not_json(self):
+        clean = '{"elements": []}'
+        self.assertEqual(self.post_with('<html>"elements"</html>', clean), clean)
