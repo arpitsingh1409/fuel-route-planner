@@ -50,7 +50,13 @@ class ExitTests(SimpleTestCase):
             {"12": [(5, (1.0, 2.0))], "12A": [(5, (1.0, 2.0))], "144B": [(6, (3.0, 4.0))]},
         )
 
-    def test_pick_exit_takes_nearest_match_within_25_miles(self):
+    def test_exits_more_than_20_miles_from_the_town_are_not_candidates(self):
+        # Beyond this the match is more likely a renumbered exit than the station's own.
+        town = (36.54, -95.22)
+        exits = {"283": [(1, (36.815, -95.22)), (2, (36.8584, -95.22))]}  # about 19 and 22 miles north
+        self.assertEqual([c[1] for c in exit_candidates("283", town, exits)], [1])
+
+    def test_pick_exit_takes_nearest_match_within_range(self):
         town = (36.54, -95.22)
         exits = {"283": [(1, (35.0, -97.0)), (2, (36.55, -95.20))]}
 

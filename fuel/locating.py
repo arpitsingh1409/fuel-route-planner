@@ -13,6 +13,9 @@ from fuel.services.geo import haversine_miles
 from fuel.services.geocoding import STATE_CODES, normalize_place
 
 Point = tuple[float, float]
+# How far from its town a station's exit may be. Among farther matches were exits a state
+# has since renumbered, where the number in the price list now points somewhere else.
+EXIT_SEARCH_MILES = 20
 Candidate = tuple[float, int, Point]  # (miles from town, OSM node id, point)
 
 _EXIT = re.compile(r"EXITS?[\s-]*(\d+)[\s-]?([A-Z])?\b")
@@ -68,7 +71,7 @@ def _split_refs(ref: str) -> list[str]:
 
 
 def exit_candidates(
-    exit_ref: str, town: Point, exits: dict[str, list[tuple[int, Point]]], max_miles: float = 25
+    exit_ref: str, town: Point, exits: dict[str, list[tuple[int, Point]]], max_miles: float = EXIT_SEARCH_MILES
 ) -> list[Candidate]:
     """Exits with this number near the town, nearest first."""
     number = re.match(r"\d+", exit_ref).group()
@@ -84,7 +87,7 @@ def exit_candidates(
 
 
 def pick_exit(
-    exit_ref: str, town: Point, exits: dict[str, list[tuple[int, Point]]], max_miles: float = 25
+    exit_ref: str, town: Point, exits: dict[str, list[tuple[int, Point]]], max_miles: float = EXIT_SEARCH_MILES
 ) -> Point | None:
     candidates = exit_candidates(exit_ref, town, exits, max_miles)
     return candidates[0][2] if candidates else None
